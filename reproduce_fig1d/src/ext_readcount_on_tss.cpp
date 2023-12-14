@@ -59,6 +59,55 @@ void gettsscpool( vector<string > &genelist, bool T, Genome &genome, Count_pool 
 	}
 }
 
+void gettescpool( vector<string > &genelist, bool T, Genome &genome, Count_pool &cpool )
+{
+	set<string > geneset;
+	for ( size_t i = 0; i < genelist.size(); ++i )
+		geneset.insert( genelist[i] );
+	if ( !T )
+	{
+		for ( map<string, Transcript >::iterator ite = genome.name_Transcript_map.begin(); 
+			ite != genome.name_Transcript_map.end(); ++ite )
+		{
+			if ( geneset.find( ite->second.geneName ) != geneset.end() )
+			{
+				string chr = ite->second.chr;
+				int tes = ite->second.getTES();
+				char strand = ite->second.strand;
+				string sid = ite->first;
+				if ( cpool.tss_id_map[chr].find( tes ) != cpool.tss_id_map[chr].end() )
+					continue;
+				cpool.id_ve.push_back( sid );
+				vector<int > ini_ve;
+				cpool.counts_table.push_back( ini_ve );
+				vector<double > ini_rve;
+				cpool.rpkm_table.push_back( ini_rve );
+				cpool.tss_strand_map[chr][tes] = strand;
+				cpool.tss_id_map[chr][tes] = cpool.id_ve.size()-1;
+			}
+		}
+	} else
+	{
+		for ( vector<string >::iterator ite = genelist.begin(); ite != genelist.end(); ++ite )
+		{
+			int tes = genome.name_Transcript_map[*ite].getTES();
+			char strand = genome.name_Transcript_map[*ite].strand;
+			string chr = genome.name_Transcript_map[*ite].chr;
+			string sid = *ite;
+			if ( cpool.tss_id_map[chr].find( tes ) != cpool.tss_id_map[chr].end() )
+				continue;
+			cpool.id_ve.push_back( sid );
+			vector<int > ini_ve;
+			cpool.counts_table.push_back( ini_ve );
+			vector<double > ini_rve;
+			cpool.rpkm_table.push_back( ini_rve );
+			cpool.tss_strand_map[chr][tes] = strand;
+			cpool.tss_id_map[chr][tes] = cpool.id_ve.size()-1;
+		}
+	}
+}
+
+
 void getTFCcpool( map<string, vector<int > > &tfcenter, Count_pool &cpool )
 {
 	for ( map<string, vector<int > >::iterator ite = tfcenter.begin(); ite != tfcenter.end(); ++ite )
@@ -320,10 +369,10 @@ void exit_with_help()
 	cerr <<"-d		Downstream (Optional default:2000)"<<endl;
 	cerr <<"-g		genelist file"<<endl;
 	cerr <<"-p		output prefix file input" <<endl;
-	cerr <<"-f		fragment length (default:150)"<<endl;
+	cerr <<"-f		fragment length (default:0). You need to use BED6 format with the 6th column indicating strand if -f > 0; therwise, set -f to 0 if you use BED3 format"<<endl;
 	cerr <<"-w		window unit"<<endl;
 	cerr <<"-T		1/0; Indicate whether gene list are transcripts or not. (default 0)"<<endl;
-	cerr <<"-t		1 tss; 2 genebody; 3 TFcenter; 4 regionbody; 5 tss_genebody; 6 genebody_up_down; 7 regionbody_2; 8 TFcenter_direction; 9 TFcenter_&&_pet_coverage (default: 1)"<<endl;
+	cerr <<"-t		1 tss; 2 genebody; 3 TFcenter; 4 regionbody; 5 tss_genebody; 6 genebody_up_down; 7 regionbody_2; 8 TFcenter_direction; 9 TFcenter_&&_pet_coverage; 10 TES (default: 1)"<<endl;
 	cerr <<"-s		window steps (for genebody only, default: 100)"<<endl;
 	cerr <<"-m		smooth stretch steps (default: 0)"<<endl;
 	cerr <<"-R		Region file with first three columns: chr start end"<<endl;
@@ -354,7 +403,7 @@ int main(int argc, char* argv[])
 	int upstream = 2000;
 	int downstream = 2000;
 	string prefix = "";
-	int seg_len = 150;
+	int seg_len = 0;
 	int win = 20;
 	int smooth_str = 0;
 	string genefile = "";
@@ -826,7 +875,48 @@ int main(int argc, char* argv[])
 				outputcount( prefix, cpool.rpkm_table, cpool.id_ve, ave_rpkm, cpool.counts_table, 3 );
 			
 		}
-	}
+	} else if ( type == 10 )
+	{
+		cout<<"read ucscfile"<<endl;
+		Genome genome;
+	//	readtranscriptfromEnsmbl( ucscfile, genome );
+	//	readtranscriptfromucsc( ucscfile, genome );
+		genome.readtranscriptfromucsc( ucscfile );
+		
+		vector< string > genelist;
+		readgenelist( genefile, genelist );
+	
+		cout<<"gettsspool"<<endl;
+		Count_pool cpool;
+		gettescpool( genelist, T, genome, cpool );
+	
+		cout<<"read tag"<<endl;
+		map<string, vector<int > > tagposmap;
+		readaligntagfile( bedfile, tagposmap, seg_len );
+	
+		int totaltag = gettotaltagnumber( tagposmap );
+	
+		cout<<"assign count"<<endl;
+		assigncountpool_tss( cpool, tagposmap, upstream, downstream, win, smooth_str, totaltag );
+	
+		cout<<"cal avepro"<<endl;
+		vector< double > ave_rpkm;
+		averagetablecolumn( ave_rpkm, cpool.rpkm_table );
+	
+		cout<<"output"<<endl;
+		if ( allout )
+			outputcount( prefix, cpool.rpkm_table, cpool.id_ve, ave_rpkm, cpool.counts_table, 0 );
+		else
+		{
+			if ( rpkmout )
+				outputcount( prefix, cpool.rpkm_table, cpool.id_ve, ave_rpkm, cpool.counts_table, 1 );
+			if ( rawcout )
+				outputcount( prefix, cpool.rpkm_table, cpool.id_ve, ave_rpkm, cpool.counts_table, 2 );
+			if ( avgcout )
+				outputcount( prefix, cpool.rpkm_table, cpool.id_ve, ave_rpkm, cpool.counts_table, 3 );
+			
+		}
+	} 
 	
 	return 1;
 	
