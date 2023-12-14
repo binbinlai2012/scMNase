@@ -1902,9 +1902,12 @@ void readaligntagfile( string infile, map<string, vector<int > > &tagpos, int se
 		}
 		
 		vector< string > parseditem = parse_string( line );
-		if ( parseditem.size() != 6 )
+		if ( parseditem.size() != 6 && seg_len > 0 )
 		{
-			cout<<"error line: "<<line<<endl; exit(1);
+			cout<<"error line: "<<line<<endl; 
+			cout<<"By default, you need to use BED6 format with the 6th column indicating strand."<<endl;
+			cout<<"Otherwise, set -f to 0 if you use BED3 format"<<endl;
+			exit(1);
 		}
 		string chr = parseditem[0];
 		int start = atoi( parseditem[1].c_str() );
